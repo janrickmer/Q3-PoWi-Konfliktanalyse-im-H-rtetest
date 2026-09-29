@@ -1033,19 +1033,21 @@ class PdfDoc{
     const c=color||[0,0,0];
     this.currentContent.push(`${c[0]/255} ${c[1]/255} ${c[2]/255} RG\n${width||0.5} w\n${x1} ${y1} m ${x2} ${y2} l S`);
   }
-  paragraph(str,x,y,width,fontSize,isBold,color,leading){
+  // beforeLine (optional): wird vor jeder Zeile aufgerufen und liefert die tatsächliche y-Position (Seitenumbruch im Absatz)
+  paragraph(str,x,y,width,fontSize,isBold,color,leading,beforeLine){
     if(!leading) leading=fontSize*1.4;
     const words=String(str).split(/\s+/); let line=''; let curY=y;
+    const put=(s)=>{ if(beforeLine) curY=beforeLine(curY); this.text(s,x,curY,fontSize,isBold,color); curY-=leading; };
     for(const word of words){
       if(!word) continue;
       const test=line?line+' '+word:word;
       if(pdfStringWidth(test,fontSize,isBold)<=width){ line=test; }
       else{
-        if(line){ this.text(line,x,curY,fontSize,isBold,color); curY-=leading; line=word; }
-        else{ this.text(word,x,curY,fontSize,isBold,color); curY-=leading; }
+        if(line){ put(line); line=word; }
+        else{ put(word); }
       }
     }
-    if(line){ this.text(line,x,curY,fontSize,isBold,color); curY-=leading; }
+    if(line) put(line);
     return curY;
   }
   build(){
@@ -1223,7 +1225,7 @@ function buildOverviewPages(ov){
       doc.text(note.room||'',M,y2,12.5,true,PRIMARY);
       doc.line(M,y2-4,M+CW,y2-4,ACCENT,0.8);
       y2-=18;
-      y2=doc.paragraph(note.text||'',M,y2,CW,10.5,false,TEXT,14.5);
+      y2=doc.paragraph(note.text||'',M,y2,CW,10.5,false,TEXT,14.5,yy=>ensure2(yy,0));   // lange Erläuterungen umbrechen
       y2-=14;
     }
     y2=resumeSection(y2,ensure2);
@@ -2512,11 +2514,18 @@ class PdfDoc {
     let cmd = `${c[0]/255} ${c[1]/255} ${c[2]/255} RG\n${width||0.5} w\n${x1} ${y1} m ${x2} ${y2} l S`;
     this.currentContent.push(cmd);
   }
-  paragraph(str, x, y, width, fontSize, isBold, color, leading) {
+  // beforeLine (optional): wird vor jeder Zeile mit deren y-Position aufgerufen und liefert die
+  // tatsächliche Position – so bricht ein langer Absatz bei Bedarf auf die nächste Seite um.
+  paragraph(str, x, y, width, fontSize, isBold, color, leading, beforeLine) {
     if (!leading) leading = fontSize * 1.4;
     const words = String(str).split(/\s+/);
     let line = '';
     let curY = y;
+    const put = (s) => {
+      if (beforeLine) curY = beforeLine(curY);
+      this.text(s, x, curY, fontSize, isBold, color);
+      curY -= leading;
+    };
     for (const word of words) {
       if (!word) continue;
       const test = line ? line + ' ' + word : word;
@@ -2524,19 +2533,14 @@ class PdfDoc {
         line = test;
       } else {
         if (line) {
-          this.text(line, x, curY, fontSize, isBold, color);
-          curY -= leading;
+          put(line);
           line = word;
         } else {
-          this.text(word, x, curY, fontSize, isBold, color);
-          curY -= leading;
+          put(word);
         }
       }
     }
-    if (line) {
-      this.text(line, x, curY, fontSize, isBold, color);
-      curY -= leading;
-    }
+    if (line) put(line);
     return curY;
   }
   build() {
@@ -2725,7 +2729,7 @@ function generateMistakesPdf() {
     doc.text(note.room, M, y2, 12.5, true, PRIMARY);
     doc.line(M, y2 - 4, M + CONTENT_W, y2 - 4, ACCENT, 0.8);
     y2 -= 18;
-    y2 = doc.paragraph(note.text, M, y2, CONTENT_W, 10.5, false, TEXT, 14.5);
+    y2 = doc.paragraph(note.text, M, y2, CONTENT_W, 10.5, false, TEXT, 14.5, yy => ensure2(yy, 0));   // lange Erläuterungen umbrechen
     y2 -= 14;
   }
 
