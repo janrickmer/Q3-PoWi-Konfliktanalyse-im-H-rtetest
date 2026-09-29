@@ -603,6 +603,23 @@ p.body-lg { font-size: 17px; line-height: 1.7; }
 .lagebild .empty-field { display:block; margin-top:10px; padding:14px 16px; border:2px dashed var(--c-blue-soft); border-radius:8px; color:var(--c-text-dim); font-family:var(--font-body); font-size:14px; }
 .lib-video { max-width: 760px; margin: 4px 0 26px; }
 .lib-video .video-wrap { margin-top: 0; }
+
+/* ---------- Zwischenstand speichern / laden ---------- */
+.save-bar{ display:flex; justify-content:flex-start; margin-top:44px; padding-top:18px; border-top:1px dashed var(--c-border); }
+.save-btn{ display:inline-flex; align-items:center; gap:9px; padding:10px 18px; background:var(--c-bg-card); color:var(--c-text-mute); border:1.5px solid var(--c-border); border-radius:8px; font-family:var(--font-body); font-size:13.5px; font-weight:700; cursor:pointer; transition:border-color .2s ease, color .2s ease, background .2s ease; }
+.save-btn:hover{ border-color:var(--c-blue); color:var(--c-blue-deep); background:var(--c-bg-soft); }
+.save-btn svg{ width:18px; height:18px; flex:none; }
+.save-load-field{ display:flex; align-items:center; gap:14px; width:100%; max-width:640px; margin-top:30px; padding:16px 20px; background:var(--c-bg-soft); border:2px dashed var(--c-border); border-radius:var(--radius); color:var(--c-text); font-family:var(--font-body); font-size:15px; font-weight:700; text-align:left; cursor:pointer; transition:border-color .2s ease, color .2s ease, background .2s ease; }
+.save-load-field:hover{ border-color:var(--c-blue); color:var(--c-blue-deep); background:var(--c-bg-card); }
+.save-load-field svg{ width:24px; height:24px; flex:none; color:var(--c-blue); }
+.save-drop{ position:relative; display:flex; flex-direction:column; align-items:center; gap:10px; padding:28px 18px; border:2px dashed var(--c-border); border-radius:var(--radius); background:var(--c-bg-soft); color:var(--c-text-mute); text-align:center; font-size:14.5px; line-height:1.5; cursor:pointer; transition:border-color .2s ease, background .2s ease; }
+.save-drop:hover, .save-drop.drag, .save-drop:focus-within{ border-color:var(--c-blue); background:var(--c-bg-tint); }
+.save-drop svg{ width:30px; height:30px; color:var(--c-blue); }
+.save-drop strong{ color:var(--c-blue-deep); }
+.save-drop input{ position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; }
+.input-error{ display:none; margin-top:14px; padding:10px 14px; background:var(--c-error-bg); border-left:3px solid var(--c-error); color:#8f2f22; font-size:13.5px; border-radius:6px; }
+.save-toast{ position:fixed; left:50%; bottom:22px; z-index:2000; max-width:calc(100vw - 32px); width:max-content; padding:12px 18px; background:var(--c-blue-dark); color:#fff; border-radius:var(--radius); box-shadow:var(--shadow-card); font-family:var(--font-body); font-size:14px; font-weight:600; line-height:1.45; opacity:0; transform:translate(-50%,16px); transition:opacity .25s ease, transform .25s ease; pointer-events:none; }
+.save-toast.show{ opacity:1; transform:translate(-50%,0); }
 </style>
 </head>
 <body>
@@ -1175,6 +1192,19 @@ function buildOverviewPages(ov){
     y-=10;
   }
 
+  // Vermerk für die Lehrkraft: Wurde eine Zwischenstand-Datei geladen – und wo ging es weiter?
+  // Steht ganz am Ende: auf der letzten Seite der Lösungserläuterungen bzw. (ohne diese) hier.
+  function resumeSection(yy,ens){
+    if(!Array.isArray(ov.resumeNotes)||!ov.resumeNotes.length) return yy;
+    yy=ens(yy,60);
+    doc.text('Verwendung von Zwischenstand-Dateien',M,yy,12.5,true,PRIMARY);
+    doc.line(M,yy-4,M+CW,yy-4,ACCENT,0.8);
+    yy-=18;
+    for(const line of ov.resumeNotes){ yy=ens(yy,20); yy=doc.paragraph(String(line),M,yy,CW,10.5,false,TEXT,14.5); yy-=2; }
+    return yy-12;
+  }
+  if(!notes.length) y=resumeSection(y,ensure);
+
   y=ensure(y,50);
   doc.line(M,y,M+CW,y,[200,200,200],0.4); y-=14;
   doc.text('Bestätigungscode für Moodle: '+String(ov.code||''),M,y,10,true,PRIMARY);
@@ -1196,6 +1226,7 @@ function buildOverviewPages(ov){
       y2=doc.paragraph(note.text||'',M,y2,CW,10.5,false,TEXT,14.5);
       y2-=14;
     }
+    y2=resumeSection(y2,ensure2);
     y2=ensure2(y2,30);
     doc.line(M,y2,M+CW,y2,[200,200,200],0.4); y2-=14;
     doc.text('Copyright Jan-Rickmer Feindt',M,y2,8.5,false,MUTE);
@@ -2329,6 +2360,7 @@ let state = {
   attempts: [0, 0, 0, 0, 0, 0],
   hintMax: [-1, -1, -1, -1, -1, -1],   // höchste angesehene Hinweis-Stufe je Raum (-1 = nie geöffnet)
   completedAt: null,
+  resumeLog: [],   // jedes Laden einer Zwischenstand-Datei: { place, savedAt, loadedAt }
 };
 window.state = state;
 
@@ -2697,6 +2729,14 @@ function generateMistakesPdf() {
     y2 -= 14;
   }
 
+  // Vermerk für die Lehrkraft: Wurde eine Zwischenstand-Datei geladen – und wo ging es weiter?
+  y2 = ensure2(y2, 60);
+  doc.text('Verwendung von Zwischenstand-Dateien', M, y2, 12.5, true, PRIMARY);
+  doc.line(M, y2 - 4, M + CONTENT_W, y2 - 4, ACCENT, 0.8);
+  y2 -= 18;
+  for (const line of saveLogPdfLines()) { y2 = ensure2(y2, 20); y2 = doc.paragraph(line, M, y2, CONTENT_W, 10.5, false, TEXT, 14.5); y2 -= 2; }
+  y2 -= 12;
+
   y2 = ensure2(y2, 30);
   doc.line(M, y2, M + CONTENT_W, y2, [200, 200, 200], 0.4);
   y2 -= 14;
@@ -2802,6 +2842,7 @@ function renderNameInput() {
         <button class="btn btn-primary btn-arrow" onclick="submitName()">Lagezentrum betreten</button>
       </div>
     </div>
+    ${saveLoadFieldHtml()}
   `;
   setTimeout(() => document.getElementById('firstNameInput')?.focus(), 100);
 }
@@ -4815,7 +4856,8 @@ window.openFeiditor = () => {
         hintMax:       state.hintMax,
         roomLabels:    ROOM_LABELS,
         solutionNotes: SOLUTION_NOTES,
-        subtitle:      PDF_SUBLINE
+        subtitle:      PDF_SUBLINE,
+        resumeNotes:   saveLogPdfLines()
       }
     };
     const inject = '<script>window.__ESCAPE_DATA__=' + JSON.stringify(data).replace(/</g, '\\u003c') + ';<\/script>';
@@ -4874,6 +4916,7 @@ window.restartGame = () => {
     attempts: [0, 0, 0, 0, 0, 0],
     hintMax: [-1, -1, -1, -1, -1, -1],
     completedAt: null,
+    resumeLog: [],
   };
   window.state = state;
   for (let i = 0; i < 6; i++) roomLocked[i] = false;
@@ -4896,6 +4939,290 @@ window.goRoom = (n) => {
     case 6: renderRoom6(); break;
   }
 };
+
+/* ---------- Zwischenstand: Anpassung an diesen Escape-Room ---------- */
+const SAVE_GAME_TITLE   = 'Konfliktanalyse im Härtetest';          // Spieltitel (Dateiname & Kopf der Datei)
+const SAVE_ROOM_ID      = 'powi-q3-konfliktanalyse-haertetest';    // Kennung: Dateien anderer Escape-Rooms werden abgelehnt
+const SAVE_CONTAINER_ID = 'screenContainer';                       // Container, dessen Inhalt jeder Bildschirm ersetzt
+const SAVE_ROOMS        = 6;                                       // Anzahl der Sektionen (je Bibliotheks- und Rätselraum)
+// Speichern nur in Bibliotheks- und Rätselräumen ab Nr. 2
+function saveScreenAllowed(s){ const m=/^(lib|room)(\d+)$/.exec(s||''); return !!m && +m[2]>=2 && +m[2]<=SAVE_ROOMS; }
+function saveScreenLabel(s){
+  const m=/^(lib|room)(\d+)$/.exec(s||'');
+  if(m) return (m[1]==='lib'?'Bibliotheksraum ':'Rätselraum ')+m[2];
+  return s==='final'?'Abschlussseite':'Einführung';
+}
+// Gelöst ist ein Rätselraum schon, sobald er gesperrt ist (roomLocked) – auch in den 0,9 s bis zur Enthüllung.
+function saveRoomDone(i){ return !!(state.solved[i] || roomLocked[i]); }
+// Ein bereits gelöster Rätselraum wird nicht erneut gezeigt: weiter wie nach dem Enthüllungs-Dialog.
+function saveResumeTarget(s){
+  const m=/^room(\d+)$/.exec(s||'');
+  if(m && saveRoomDone(+m[1]-1)) return +m[1]>=SAVE_ROOMS ? 'final' : 'lib'+(+m[1]+1);
+  return s;
+}
+function saveGoTo(s){
+  let m;
+  if(s==='final') renderFinal();
+  else if((m=/^lib(\d+)$/.exec(s)) && +m[1]>=1 && +m[1]<=SAVE_ROOMS) goLibrary(+m[1]);
+  else if((m=/^room(\d+)$/.exec(s)) && +m[1]>=1 && +m[1]<=SAVE_ROOMS){ goRoom(+m[1]); saveRestoreInputs(s); }
+  else renderIntro();
+  saveInputs=null;
+}
+// Zusatzdaten außerhalb von state:
+//  locked – Sperre der gelösten Rätselräume (roomLocked),
+//  inputs – im aktuellen Rätselraum schon eingetragene Antworten, die noch nicht geprüft sind
+//           bzw. beim letzten Prüfen stehen bleiben (Felder, Auswahllisten, Wahl-Buttons, Karten).
+//           Rot markierte Auswahlen, die das Spiel ohnehin zurücksetzt, werden nicht übernommen.
+let saveInputs=null;   // beim Laden gemerkt, nach dem Zeichnen des Rätselraums wieder eingesetzt
+function saveCollectExtra(){
+  const extra={ locked:roomLocked.slice() };
+  const m=/^room(\d+)$/.exec(state.screen||'');
+  if(!m || saveResumeTarget(state.screen)!==state.screen) return extra;
+  const n=+m[1]-1, byId=id=>document.getElementById(id), wrong=id=>{ const el=byId(id); return !!(el&&el.classList.contains('incorrect')); };
+  const own=obj=>Object.keys(obj).filter(k=>obj[k]&&obj[k].roomIdx===n);
+  const inputs={ screen:state.screen, fields:{}, mc:{}, choice:{}, grid:{}, bucket:{} };
+  document.querySelectorAll('#'+SAVE_CONTAINER_ID+' input.cloze-input[id], #'+SAVE_CONTAINER_ID+' select.assign-select[id]').forEach(el=>{
+    if(el.value && !(el.tagName==='SELECT' && el.closest('.incorrect'))) inputs.fields[el.id]=el.value;
+  });
+  Object.keys(mcState).forEach(id=>{ const opt=mcState[id]; if(opt && MC_REGISTRY[id] && MC_REGISTRY[id]._roomIdx===n && !wrong(id+'-opt-'+opt)) inputs.mc[id]=opt; });
+  own(choiceState).forEach(k=>{ const sel={}; Object.keys(choiceState[k].sel).forEach(r=>{ if(!wrong(k+'-row-'+r)) sel[r]=choiceState[k].sel[r]; }); inputs.choice[k]=sel; });
+  own(gridState).forEach(k=>{ const g={ art:{}, ebene:{} }; ['art','ebene'].forEach(d=>Object.keys(gridState[k][d]).forEach(it=>{ if(!wrong(k+'-item-'+it)) g[d][it]=gridState[k][d][it]; })); inputs.grid[k]=g; });
+  own(bucketState).forEach(k=>{ const a={}; Object.keys(bucketState[k].assign).forEach(c=>{ if(!wrong(k+'-card-'+c)) a[c]=bucketState[k].assign[c]; }); inputs.bucket[k]=a; });
+  extra.inputs=inputs;
+  return extra;
+}
+function saveApplyExtra(extra,data){
+  const locked=Array.isArray(extra.locked)?extra.locked:[];
+  for(let i=0;i<SAVE_ROOMS;i++){
+    roomLocked[i]=!!(state.solved[i] || locked[i]===true);
+    if(roomLocked[i]){ state.solved[i]=true; state.letters[i]=CODE_WORD[i]; }   // wie triggerReveal
+  }
+  saveInputs=(extra.inputs && typeof extra.inputs==='object' && extra.inputs.screen===data.screen) ? extra.inputs : null;
+}
+// Eingaben über dieselben Funktionen wieder einsetzen, die auch ein Klick auslöst
+function saveRestoreInputs(s){
+  const inp=saveInputs; saveInputs=null;
+  if(!inp || inp.screen!==s) return;
+  const byId=id=>document.getElementById(id), each=(o,fn)=>{ if(o&&typeof o==='object') Object.keys(o).forEach(k=>fn(k,o[k])); };
+  each(inp.fields,(id,v)=>{ const el=byId(id); if(el && typeof v==='string' && el.matches('input.cloze-input, select.assign-select')) el.value=v; });
+  each(inp.mc,(id,opt)=>{ if(MC_REGISTRY[id] && byId(id+'-opt-'+opt)) selectMC(id,opt); });
+  each(inp.choice,(k,sel)=>{ if(choiceState[k]) each(sel,(r,opt)=>{ if(byId(k+'-btn-'+r+'-'+opt)) pickChoice(k,r,opt); }); });
+  each(inp.grid,(k,g)=>{ if(gridState[k]&&g) ['art','ebene'].forEach(d=>each(g[d],(it,opt)=>{ if(byId(k+'-'+d+'-'+it+'-'+opt)) pickGrid(k,it,d,opt); })); });
+  each(inp.bucket,(k,a)=>{ if(bucketState[k]) each(a,(c,b)=>{ if(byId(k+'-card-'+c) && byId(k+'-bucket-'+b)){ selectBucketCard(null,k,c); placeBucketCard(k,b); } }); });
+}
+// Upload-Seite im Stil der Anmeldung (Zugangsprotokoll)
+function saveRenderResumeScreen(){
+  renderSeals(); window.scrollTo({ top: 0, behavior: 'instant' });
+  root.innerHTML = `
+    <div class="kicker">Politik und Wirtschaft · Q3 · Escape-Room</div>
+    <h1 class="title-mega">Zwischenstand<br><em>laden</em></h1>
+    <p class="lede">Weiterarbeiten, wo du aufgehört hast: Die Zugangskontrolle liest deine Zwischenstand-Datei und bringt dich direkt in die Sektion zurück, in der du gespeichert hast.</p>
+
+    <div class="card card-accent" style="max-width: 640px;">
+      <span class="stamp">Zugangsprotokoll · Zwischenstand</span>
+      <h3 style="font-size: 22px; margin-bottom: 14px;">Zwischenstand-Datei hochladen</h3>
+      <p style="margin-bottom: 22px; color: var(--c-text-mute); font-size: 15px;">
+        Lade hier deine Zwischenstand-Datei hoch. Sie heißt „Zwischenstand zum Escape-Room ${SAVE_GAME_TITLE} vom … von …“ und liegt meistens in deinem Download-Ordner. Danach geht es genau an der Stelle weiter, an der du gespeichert hast.
+      </p>
+      ${saveDropHtml()}
+      <div class="btn-row" style="margin-top: 24px;">
+        <button type="button" class="btn btn-ghost" onclick="renderNameInput()">Zurück zur Anmeldung</button>
+      </div>
+    </div>
+  `;
+}
+
+/* ============================================================
+   ZWISCHENSTAND ALS DATEI SPEICHERN / AUS DATEI LADEN
+   Die Datei (.txt) enthält oben einen lesbaren Hinweistext und
+   darunter einen codierten Datenblock mit Prüfsumme. Veränderte,
+   beschädigte oder fremde Dateien werden beim Laden abgelehnt.
+   Jedes Laden wird in state.resumeLog vermerkt und erscheint am
+   Ende der Überblick-PDF (für die Lehrkraft).
+   ============================================================ */
+const SAVE_FORMAT = 1;
+const SAVE_SALT   = 'Zwischenstand|Escape-Room|v1';
+const SAVE_BEGIN  = '-----BEGIN ZWISCHENSTAND-----';
+const SAVE_END    = '-----END ZWISCHENSTAND-----';
+const SAVE_ICON   = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>';
+const LOAD_ICON   = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>';
+
+function saveHash(str){ // cyrb53-Variante, 64 Bit als 16 Hex-Zeichen
+  let h1=0xdeadbeef^str.length, h2=0x41c6ce57^str.length;
+  for(let i=0;i<str.length;i++){ const ch=str.charCodeAt(i); h1=Math.imul(h1^ch,2654435761); h2=Math.imul(h2^ch,1597334677); }
+  h1=Math.imul(h1^(h1>>>16),2246822507)^Math.imul(h2^(h2>>>13),3266489909);
+  h2=Math.imul(h2^(h2>>>16),2246822507)^Math.imul(h1^(h1>>>13),3266489909);
+  return (h2>>>0).toString(16).padStart(8,'0')+(h1>>>0).toString(16).padStart(8,'0');
+}
+function saveScramble(bytes){ // symmetrisch: dieselbe Funktion codiert und decodiert
+  let s=parseInt(saveHash(SAVE_SALT).slice(0,8),16)>>>0;
+  const out=new Uint8Array(bytes.length);
+  for(let i=0;i<bytes.length;i++){
+    s=(s+0x6D2B79F5)>>>0; let t=s;
+    t=Math.imul(t^(t>>>15),t|1); t^=t+Math.imul(t^(t>>>7),t|61);
+    out[i]=bytes[i]^((t^(t>>>14))&0xFF);
+  }
+  return out;
+}
+function saveEncode(data){
+  const json=JSON.stringify(data);
+  const wrap=JSON.stringify({ f:SAVE_FORMAT, id:SAVE_ROOM_ID, s:saveHash(SAVE_SALT+'|'+SAVE_ROOM_ID+'|'+json), d:json });
+  const bytes=saveScramble(new TextEncoder().encode(wrap));
+  let bin=''; for(let i=0;i<bytes.length;i+=0x8000) bin+=String.fromCharCode.apply(null,bytes.subarray(i,i+0x8000));
+  return btoa(bin).replace(/.{1,76}/g,'$&\r\n').trim();
+}
+function saveDecode(text){ // wirft Error mit schülergerechter Meldung
+  const newer='Diese Zwischenstand-Datei stammt aus einer neueren Version des Escape-Rooms. Bitte lade die Seite neu und versuche es noch einmal.';
+  const m=/-----BEGIN ZWISCHENSTAND(?: V(\d+))?-----/.exec(text);   // künftige Formate tragen ihre Nummer im Marker
+  const b=m?text.indexOf(SAVE_END,m.index):-1;
+  if(!m||b<0) throw new Error('Das ist keine Zwischenstand-Datei. Bitte wähle die Datei „Zwischenstand zum Escape-Room '+SAVE_GAME_TITLE+' vom … von …“ aus.');
+  if(m[1]&&+m[1]>SAVE_FORMAT) throw new Error(newer);
+  const broken='Diese Zwischenstand-Datei wurde verändert oder ist beschädigt und kann nicht geladen werden.';
+  let wrap;
+  try{
+    const bin=atob(text.slice(m.index+m[0].length,b).replace(/[^A-Za-z0-9+/=]/g,''));
+    const bytes=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+    wrap=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(saveScramble(bytes)));
+  }catch(e){ throw new Error(broken); }
+  if(!wrap||typeof wrap.d!=='string'||typeof wrap.id!=='string'||wrap.s!==saveHash(SAVE_SALT+'|'+wrap.id+'|'+wrap.d)) throw new Error(broken);
+  let data; try{ data=JSON.parse(wrap.d); }catch(e){ throw new Error(broken); }
+  if(wrap.id!==SAVE_ROOM_ID) throw new Error('Diese Zwischenstand-Datei gehört zu einem anderen Escape-Room'+(data&&data.game?' („'+data.game+'“)':'')+'. Bitte öffne den passenden Escape-Room.');
+  if(wrap.f>SAVE_FORMAT) throw new Error(newer);
+  if(!data||typeof data!=='object'||!data.state||typeof data.state!=='object'||typeof data.screen!=='string') throw new Error(broken);
+  return data;
+}
+
+function saveTwo(n){ return String(n).padStart(2,'0'); }
+function saveFmtDate(d){ d=new Date(d); return saveTwo(d.getDate())+'.'+saveTwo(d.getMonth()+1)+'.'+d.getFullYear(); }
+function saveFmtDateTime(d){ d=new Date(d); if(isNaN(d)) return '–'; return saveFmtDate(d)+' um '+saveTwo(d.getHours())+':'+saveTwo(d.getMinutes())+' Uhr'; }
+function saveStudentName(){ return ((state.firstName||'')+' '+(state.lastName||'')).trim(); }
+function saveFileName(d){
+  const clean=s=>String(s||'').replace(/[\\/:*?"<>|\u0000-\u001F]+/g,' ').replace(/\s+/g,' ').trim();
+  return clean('Zwischenstand zum Escape-Room '+SAVE_GAME_TITLE+' vom '+saveFmtDate(d)+' von '+(saveStudentName()||'Unbekannt'))+'.txt';
+}
+
+/* Toast-Meldung (unten, blendet sich selbst aus) */
+let saveToastTimer=null;
+function showSaveToast(msg){
+  let t=document.getElementById('saveToast');
+  if(!t){ t=document.createElement('div'); t.id='saveToast'; t.className='save-toast'; t.setAttribute('role','status'); document.body.appendChild(t); }
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(saveToastTimer); saveToastTimer=setTimeout(()=>t.classList.remove('show'),6000);
+}
+
+/* ---------- Speichern ---------- */
+window.saveProgress=()=>{
+  try{
+    const now=new Date();
+    const target=saveResumeTarget(state.screen);
+    const snap=JSON.parse(JSON.stringify(state));
+    snap.screen=target;
+    const data={ v:SAVE_FORMAT, game:SAVE_GAME_TITLE, savedAt:now.toISOString(), screen:target, place:saveScreenLabel(target), state:snap, extra:saveCollectExtra() };
+    const name=saveStudentName()||'Unbekannt';
+    const NL='\r\n';
+    const text='\uFEFF'
+      +'Zwischenstand zum Escape-Room „'+SAVE_GAME_TITLE+'“'+NL
+      +'Name: '+name+NL
+      +'Gespeichert am '+saveFmtDateTime(now)+' ('+data.place+')'+NL+NL
+      +'So geht es weiter: Öffne den Escape-Room und klicke auf der Startseite ganz unten auf'+NL
+      +'„Zwischenstand aus Datei laden und weiterspielen“. Lade dann diese Datei hoch.'+NL
+      +'Bitte verändere diese Datei nicht – sonst kann sie nicht mehr geladen werden.'+NL+NL
+      +SAVE_BEGIN+NL+saveEncode(data)+NL+SAVE_END+NL;
+    const filename=saveFileName(now);
+    // application/octet-stream: Der Browser speichert die Datei, statt sie nur anzuzeigen.
+    const url=URL.createObjectURL(new Blob([text],{type:'application/octet-stream'}));
+    const link=document.createElement('a');
+    link.href=url; link.download=filename; link.style.display='none';
+    document.body.appendChild(link); link.click();
+    // Object-URL lange gültig lassen: iOS liest den Blob erst, wenn der Download-Dialog bestätigt ist.
+    setTimeout(()=>{ try{ document.body.removeChild(link); }catch(_){} URL.revokeObjectURL(url); },60000);
+    showSaveToast('Zwischenstand gespeichert. Du findest die Datei in deinem Download-Ordner.');
+  }catch(e){ console.error(e); alert('Der Zwischenstand konnte nicht gespeichert werden: '+e.message); }
+};
+
+/* ---------- Speicher-Button am Seitenende (Bibliotheks- und Rätselräume ab Nr. 2) ---------- */
+function refreshSaveBar(){
+  const box=document.getElementById(SAVE_CONTAINER_ID); if(!box) return;
+  const bar=document.getElementById('saveBar');
+  if(!saveScreenAllowed(state.screen)){ if(bar) bar.remove(); return; }
+  if(bar&&bar.parentNode===box&&box.lastElementChild===bar) return;
+  if(bar) bar.remove();
+  box.insertAdjacentHTML('beforeend',
+    '<div class="save-bar" id="saveBar"><button type="button" class="save-btn" onclick="saveProgress()" '
+    +'title="Lädt eine Datei mit deinem bisherigen Fortschritt herunter. Damit kannst du später an dieser Stelle weiterspielen.">'
+    +SAVE_ICON+'<span>Zwischenstand als Datei speichern</span></button></div>');
+}
+// Jede Bildschirm-Änderung ersetzt den Inhalt des Bildschirm-Containers – dann Button prüfen.
+new MutationObserver(refreshSaveBar).observe(document.getElementById(SAVE_CONTAINER_ID),{childList:true});
+
+/* ---------- Feld auf der Startseite ---------- */
+function saveLoadFieldHtml(){
+  return '<button type="button" class="save-load-field" onclick="renderResume()">'+LOAD_ICON
+    +'<span>Zwischenstand aus Datei laden und weiterspielen</span></button>';
+}
+
+/* ---------- Laden ---------- */
+function saveApplyState(snap){
+  Object.keys(state).forEach(k=>{
+    if(k==='screen'||!(k in snap)) return;
+    const cur=state[k], val=snap[k];
+    if(k==='completedAt'){ state[k]=val?new Date(val):null; return; }
+    if(Array.isArray(cur)){ if(Array.isArray(val)) state[k]=val; return; }
+    if(cur===null||val===null||typeof cur===typeof val) state[k]=val;
+  });
+  state.resumeLog=Array.isArray(state.resumeLog)?state.resumeLog.filter(e=>e&&typeof e==='object'&&typeof e.place==='string'):[];
+}
+function saveLoadText(text){
+  const data=saveDecode(text);
+  saveApplyState(data.state);
+  saveApplyExtra(data.extra||{},data);
+  state.resumeLog.push({ place:String(data.place||saveScreenLabel(data.screen)), savedAt:String(data.savedAt||''), loadedAt:new Date().toISOString() });
+  saveGoTo(data.screen);
+  window.scrollTo({top:0,behavior:'instant'});
+  showSaveToast('Willkommen zurück'+(state.firstName?', '+state.firstName:'')+'! Dein Zwischenstand vom '+saveFmtDateTime(data.savedAt)+' wurde geladen.');
+}
+function saveHandleFile(file){
+  const err=document.getElementById('saveLoadError');
+  const fail=msg=>{ if(err){ err.style.display='block'; err.textContent=msg; } };
+  if(err) err.style.display='none';
+  if(!file) return;
+  if(file.size>2*1024*1024){ fail('Diese Datei ist zu groß für eine Zwischenstand-Datei.'); return; }
+  const fr=new FileReader();
+  fr.onload=()=>{ try{ saveLoadText(String(fr.result||'')); }catch(e){ console.warn(e); fail(e.message); } };
+  fr.onerror=()=>fail('Die Datei konnte nicht gelesen werden. Bitte versuche es noch einmal.');
+  fr.readAsText(file,'utf-8');
+}
+window.renderResume=()=>{
+  state.screen='resume';
+  saveRenderResumeScreen();   // Anpassung: zeichnet die Upload-Seite (IDs saveDrop, saveFileInput, saveLoadError)
+  const input=document.getElementById('saveFileInput'), drop=document.getElementById('saveDrop');
+  input.addEventListener('change',()=>{ saveHandleFile(input.files&&input.files[0]); input.value=''; });
+  ['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,()=>drop.classList.add('drag')));
+  drop.addEventListener('dragleave',()=>drop.classList.remove('drag'));
+};
+// Dateien, die irgendwo auf der Upload-Seite abgelegt werden, laden (statt sie im Browser zu öffnen).
+document.addEventListener('dragover',e=>{ if(state.screen==='resume') e.preventDefault(); });
+document.addEventListener('drop',e=>{
+  if(state.screen!=='resume') return;
+  e.preventDefault();
+  const drop=document.getElementById('saveDrop'); if(drop) drop.classList.remove('drag');
+  saveHandleFile(e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]);
+});
+function saveDropHtml(){
+  return '<label class="save-drop" id="saveDrop">'+LOAD_ICON
+    +'<span><strong>Zwischenstand-Datei auswählen</strong><br>oder hierher ziehen</span>'
+    +'<input type="file" id="saveFileInput" accept=".txt,text/plain"></label>'
+    +'<div id="saveLoadError" class="input-error" role="alert"></div>';
+}
+
+/* ---------- Vermerk für die Überblick-PDF ---------- */
+function saveLogPdfLines(){
+  const log=Array.isArray(state.resumeLog)?state.resumeLog:[];
+  if(!log.length) return ['Es wurde keine Zwischenstand-Datei geladen.'];
+  const lines=[log.length===1?'Es wurde 1-mal eine Zwischenstand-Datei geladen:':'Es wurde '+log.length+'-mal eine Zwischenstand-Datei geladen:'];
+  log.forEach((e,i)=>lines.push((i+1)+'. Weitergespielt ab '+e.place+' (Datei gespeichert am '+saveFmtDateTime(e.savedAt)+', geladen am '+saveFmtDateTime(e.loadedAt)+').'));
+  return lines;
+}
 
 /* ============================================================
    INIT
